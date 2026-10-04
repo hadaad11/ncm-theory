@@ -63,6 +63,7 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
 <body>
 <header>
   <h1>Theory vs Dry Real<small id="upd">NCM Material Consumption</small></h1>
+  <button class="ib" id="btnImport" title="Import new reports from Drive">&#x21e9;</button>
   <button class="ib" id="btnRefresh" title="Refresh">&#x21bb;</button>
   <button class="ib" id="btnSet" title="Settings">&#9881;</button>
 </header>
@@ -207,7 +208,7 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
     refreshLists(s.plant, s.mix); render();
   }
 
-  function load(){
+  function load(keepMsg){
     var a=api();
     if(!a){ $('setup').style.display='block'; return; }
     if(busy) return; busy=true;
@@ -217,7 +218,7 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
       .then(function(d){
         if(d.error){ throw new Error(d.error==='unauthorized' ? 'The link key is wrong — open settings and paste the link again.' : d.error); }
         var n=new Date(); d.updated = iso(n)+' '+pad(n.getHours())+':'+pad(n.getMinutes());   // phone's own clock
-        lsSet(LS_DATA, JSON.stringify(d)); message(''); setData(d);
+        lsSet(LS_DATA, JSON.stringify(d)); if(keepMsg!==true) message(''); setData(d);
       })
       .catch(function(e){
         message((D ? 'Showing the last saved data. ' : '')+'Could not load: '+esc(e.message||e), D?'':'err');
@@ -243,6 +244,27 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
     refreshLists(); render(); saveFilters();
   }); });
   $('btnRefresh').addEventListener('click', load);
+
+  // pull new plant reports from the Drive folder now (same job as the 7 AM run)
+  var importing=false;
+  $('btnImport').addEventListener('click', function(){
+    var a=api(); if(!a || importing) return;
+    importing=true; $('btnImport').classList.add('spin');
+    message('Importing new reports from Drive… this can take a minute.');
+    fetch(a+(a.indexOf('?')>-1?'&':'?')+'run=import&fmt=json', {cache:'no-store', redirect:'follow'})
+      .then(function(r){ return r.json(); })
+      .then(function(r){
+        if(r.error) throw new Error(r.error);
+        if(r.mats){ message('The sheet script is an older version — redeploy it (Manage deployments → New version) to use this button.', 'err'); return; }
+        if(r.busy){ message('An import is already running — try again in 2 minutes.'); return; }
+        if(!r.files){ message('No new reports in the Drive folder.'); return; }
+        message('Imported '+r.files+' file(s), '+r.rows+' new rows'+(r.filled?', '+r.filled+' Theory cells filled':'')+
+                (r.added.length?': '+esc(r.added.join(', ')):'')+(r.left?' — '+r.left+' more will finish in a minute.':'.'));
+        load(true);
+      })
+      .catch(function(e){ message('Import failed: '+esc(e.message||e), 'err'); })
+      .then(function(){ importing=false; $('btnImport').classList.remove('spin'); });
+  });
   $('btnSet').addEventListener('click', function(){
     var st=$('setup'); st.style.display = st.style.display==='block' ? 'none' : 'block';
     $('apiIn').value = lsGet(LS_API)||'';
