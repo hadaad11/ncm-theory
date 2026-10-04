@@ -128,9 +128,14 @@ td.pc{font-size:11.5px}
 
   // a personal link can carry the data link after '#api=' (the part after # never reaches GitHub);
   // it is kept in the address so a Home-Screen shortcut made from it keeps working
+  // short form: #k=<key> — the sheet's web-app address is below, the key never is
+  var EXEC = 'https://script.google.com/macros/s/AKfycby4PN6FHViRn0O1MUyHTJCT5Sz3dKRVewc9HZn_-gQXVXyJNZctn_W6UsUUfuvmCkQCGg/exec';
   (function(){
-    var m = location.hash.match(/[#&]api=([^&]+)/);
-    if(m){ try{ lsSet(LS_API, decodeURIComponent(m[1])); }catch(e){} }
+    var m = location.hash.match(/[#&]api=([^&]+)/), k = location.hash.match(/[#&]k=([A-Za-z0-9]+)/);
+    try{
+      if(m) lsSet(LS_API, decodeURIComponent(m[1]));
+      else if(k) lsSet(LS_API, EXEC+'?k='+k[1]);
+    }catch(e){}
   })();
 
   // link: from the Android app if it carries one, otherwise saved on this device
