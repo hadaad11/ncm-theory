@@ -57,6 +57,22 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
 .btn{width:100%;height:44px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;font-weight:600;margin-top:10px;cursor:pointer}
 .spin{animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+.seg{display:flex;background:var(--chip);border-radius:10px;padding:3px;gap:3px;margin-bottom:10px}
+.seg button{flex:1;border:0;background:transparent;color:var(--brand);font:inherit;font-size:13.5px;padding:7px;border-radius:8px;cursor:pointer}
+.seg button.on{background:#fff;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-bottom:8px}
+.legend span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.legend .th:before{background:var(--cTh)} .legend .dr:before{background:var(--cDr)}
+:root{--cTh:#2e75b6;--cDr:#e67e22}
+.br{margin-bottom:9px}
+.bn{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:8px}
+.bn b{font-weight:500}
+.bt{height:9px;border-radius:5px;background:#f1f4f8;margin-top:2px;overflow:hidden}
+.bt i{display:block;height:100%;border-radius:5px;min-width:2px}
+.bt i.th{background:var(--cTh)} .bt i.dr{background:var(--cDr)}
+#chart svg{width:100%;height:auto;display:block;touch-action:pan-y}
+#chart svg text{font-size:10px;fill:var(--muted)}
+#tip{font-size:12.5px;text-align:center;min-height:18px;margin-top:4px;color:var(--ink)}
 @media (max-width:380px){ .kpi b{font-size:14px} td,th{padding-left:2px;padding-right:2px} }
 </style>
 </head>
@@ -95,6 +111,16 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
     <div class="kpi"><span>Theory</span><b id="kTh">–</b></div>
     <div class="kpi"><span>Dry Real</span><b id="kDr">–</b></div>
     <div class="kpi"><span>Difference</span><b id="kDf">–</b><i id="kPc"></i></div>
+  </div>
+
+  <div class="card">
+    <div class="seg" id="seg">
+      <button data-v="mat" class="on">By material</button>
+      <button data-v="day">Daily</button>
+    </div>
+    <div class="legend"><span class="th">Theory</span><span class="dr">Dry Real</span></div>
+    <div id="chart"></div>
+    <div id="tip"></div>
   </div>
 
   <div class="card">
@@ -163,13 +189,16 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
   function render(){
     if(!D){ $('tb').innerHTML=''; return; }
     var f=$('from').value||'0000', t=$('to').value||'9999', p=$('plant').value;
-    var agg={}, th=0, dr=0;
+    var agg={}, days={}, th=0, dr=0;
     D.rows.forEach(function(r){
       if(r[0]<f || r[0]>t) return;
       if(p!=='' && String(r[1])!==p) return;
       var a = agg[r[3]] || (agg[r[3]]=[0,0]);
       a[0]+=r[4]; a[1]+=r[5]; th+=r[4]; dr+=r[5];
+      var d = days[r[0]] || (days[r[0]]=[0,0]);
+      d[0]+=r[4]; d[1]+=r[5];
     });
+    drawChart(agg, days);
     var keys=Object.keys(agg).filter(function(k){return D.mats[k] && (agg[k][0]||agg[k][1])})
              .sort(function(a,b){return D.mats[a].localeCompare(D.mats[b])});
     var h='';
@@ -186,6 +215,70 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
     $('kPc').textContent = dr ? (dft/dr*100).toFixed(2)+'% of Dry' : '';
     $('kPc').className = $('kDf').className;
     $('foot').textContent = (keys.length && th===0) ? 'No Theory figures in this period — the plant reports carry Theory from September 2026.' : '';
+  }
+
+  // ---- chart (plain HTML/SVG, no library, so it also works offline)
+  var VIEW = lsGet('ncm_td_view') || 'mat';
+  function short(v){
+    var a=Math.abs(v);
+    if(a>=1e6) return (v/1e6).toFixed(a>=1e7?0:1)+'M';
+    if(a>=1e3) return (v/1e3).toFixed(a>=1e4?0:1)+'K';
+    return String(Math.round(v));
+  }
+  function dm(s){ return s.slice(8,10)+'/'+s.slice(5,7); }
+
+  function drawChart(agg, days){
+    var box=$('chart'); $('tip').textContent='';
+    if(VIEW==='mat'){
+      var ks=Object.keys(agg).filter(function(k){return D.mats[k] && (agg[k][0]||agg[k][1])})
+        .sort(function(a,b){return Math.max(agg[b][0],agg[b][1]) - Math.max(agg[a][0],agg[a][1])});
+      if(!ks.length){ box.innerHTML='<div class="note">No data.</div>'; return; }
+      var mx=Math.max.apply(null, ks.map(function(k){return Math.max(agg[k][0],agg[k][1])}));
+      box.innerHTML = ks.map(function(k){
+        var a=agg[k], df=a[0]-a[1], pc = a[1] ? (df/a[1]*100) : 0;
+        var tag = a[0]===0 ? '<span class="neg">no Theory</span>' :
+                  '<span class="'+(df<0?'neg':df>0?'pos':'')+'">'+(pc>0?'+':'')+pc.toFixed(2)+'%</span>';
+        return '<div class="br"><div class="bn"><b>'+esc(D.mats[k])+'</b>'+tag+'</div>'+
+          '<div class="bt"><i class="th" style="width:'+(a[0]/mx*100)+'%'+(a[0]?'':';min-width:0')+'"></i></div>'+
+          '<div class="bt"><i class="dr" style="width:'+(a[1]/mx*100)+'%'+(a[1]?'':';min-width:0')+'"></i></div></div>';
+      }).join('');
+      return;
+    }
+    // daily lines
+    var ds=Object.keys(days).sort();
+    if(!ds.length){ box.innerHTML='<div class="note">No data.</div>'; return; }
+    var W=340,H=190,L=40,R=8,T=10,B=24, iw=W-L-R, ih=H-T-B;
+    var mx=0; ds.forEach(function(d){ mx=Math.max(mx,days[d][0],days[d][1]); }); if(!mx) mx=1;
+    var X=function(i){ return L + (ds.length===1 ? iw/2 : i*iw/(ds.length-1)); };
+    var Y=function(v){ return T + ih - v/mx*ih; };
+    var s='<svg viewBox="0 0 '+W+' '+H+'" id="svgc">';
+    for(var g=0; g<=4; g++){
+      var gv=mx*g/4, gy=Y(gv);
+      s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+gy+'" y2="'+gy+'" stroke="#e8edf3"/>'+
+         '<text x="'+(L-4)+'" y="'+(gy+3)+'" text-anchor="end">'+short(gv)+'</text>';
+    }
+    var lab=[0, Math.floor((ds.length-1)/2), ds.length-1].filter(function(v,i,a){return a.indexOf(v)===i});
+    lab.forEach(function(i, n){
+      var an = ds.length===1 ? 'middle' : (i===0 ? 'start' : (i===ds.length-1 ? 'end' : 'middle'));
+      s+='<text x="'+X(i)+'" y="'+(H-6)+'" text-anchor="'+an+'">'+dm(ds[i])+'</text>';
+    });
+    // Dry wide underneath, Theory thin on top: when they match you still see both
+    [[1,'var(--cDr)',4.5,3.2],[0,'var(--cTh)',1.8,1.8]].forEach(function(c){
+      var pts=ds.map(function(d,i){ return X(i).toFixed(1)+','+Y(days[d][c[0]]).toFixed(1); }).join(' ');
+      s+='<polyline points="'+pts+'" fill="none" stroke="'+c[1]+'" stroke-width="'+c[2]+'" stroke-linejoin="round" stroke-linecap="round"/>';
+      if(ds.length<=31) ds.forEach(function(d,i){ s+='<circle cx="'+X(i)+'" cy="'+Y(days[d][c[0]])+'" r="'+c[3]+'" fill="'+c[1]+'"/>'; });
+    });
+    s+='<line id="cur" x1="0" x2="0" y1="'+T+'" y2="'+(T+ih)+'" stroke="#9aa6b2" stroke-dasharray="3 3" visibility="hidden"/></svg>';
+    box.innerHTML=s;
+    var svg=$('svgc'), cur=$('cur');
+    function pick(ev){
+      var r=svg.getBoundingClientRect(), x=(ev.clientX-r.left)/r.width*W;
+      var i = ds.length===1 ? 0 : Math.round((x-L)/iw*(ds.length-1)); i=Math.max(0,Math.min(ds.length-1,i));
+      cur.setAttribute('x1',X(i)); cur.setAttribute('x2',X(i)); cur.setAttribute('visibility','visible');
+      var v=days[ds[i]];
+      $('tip').innerHTML='<b>'+dm(ds[i])+'</b> &nbsp; Theory '+fmt(v[0])+' &nbsp;·&nbsp; Dry '+fmt(v[1]);
+    }
+    svg.addEventListener('pointerdown', pick); svg.addEventListener('pointermove', pick);
   }
 
   function setData(d){
@@ -228,6 +321,14 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
     document.querySelectorAll('.chip').forEach(function(o){o.classList.toggle('on', o===c)});
     refreshLists(); render(); saveFilters();
   }); });
+  document.querySelectorAll('#seg button').forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-v')===VIEW);
+    b.addEventListener('click', function(){
+      VIEW=b.getAttribute('data-v'); lsSet('ncm_td_view', VIEW);
+      document.querySelectorAll('#seg button').forEach(function(o){o.classList.toggle('on', o===b)});
+      render();
+    });
+  });
   $('btnRefresh').addEventListener('click', load);
   $('btnSet').addEventListener('click', function(){
     var st=$('setup'); st.style.display = st.style.display==='block' ? 'none' : 'block';
