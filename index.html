@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NCM Theory vs Dry</title>
+<meta name="theme-color" content="#1F4E79">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Theory vs Dry">
+<style>
+:root{
+  --bg:#eef2f7; --card:#fff; --ink:#1b2430; --muted:#6b7684; --line:#dde3ea;
+  --brand:#1F4E79; --brand2:#2e75b6; --pos:#1e7d45; --neg:#c0392b; --chip:#e3ebf5;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.4 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+header{position:sticky;top:0;z-index:5;background:var(--brand);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;font-weight:600}
+header small{display:block;font-size:11.5px;opacity:.8;font-weight:400}
+.ib{background:rgba(255,255,255,.15);border:0;color:#fff;width:38px;height:38px;border-radius:10px;
+  font-size:18px;display:grid;place-items:center;cursor:pointer}
+.ib:active{background:rgba(255,255,255,.3)}
+main{padding:12px 12px 32px;max-width:760px;margin:0 auto}
+.card{background:var(--card);border-radius:14px;padding:12px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+input,select{width:100%;height:42px;border:1px solid var(--line);border-radius:10px;padding:0 10px;
+  font:inherit;background:#fff;color:var(--ink);min-width:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}
+.chip{border:0;background:var(--chip);color:var(--brand);border-radius:999px;padding:7px 13px;font:inherit;font-size:13px;cursor:pointer}
+.chip.on{background:var(--brand);color:#fff}
+.full{grid-column:1/-1}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.kpi{background:var(--card);border-radius:14px;padding:10px;box-shadow:0 1px 2px rgba(0,0,0,.06);min-width:0}
+.kpi span{display:block;font-size:11.5px;color:var(--muted)}
+.kpi b{display:block;font-size:16px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi i{font-style:normal;font-size:11.5px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font-size:11.5px;color:var(--muted);font-weight:600;text-align:right;padding:6px 4px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+td{padding:8px 4px;border-bottom:1px solid #f0f3f6;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{white-space:normal;font-weight:500}
+tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;background:#f5f8fc}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+.note{font-size:12.5px;color:var(--muted);text-align:center;padding:6px}
+.warn{background:#fff6e0;color:#7a5600;border-radius:10px;padding:8px 10px;font-size:13px;margin-bottom:10px}
+.err{background:#fdecea;color:#8a1f15}
+#setup{display:none}
+#setup p{margin:0 0 10px;font-size:14px}
+.btn{width:100%;height:44px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;font-weight:600;margin-top:10px;cursor:pointer}
+.spin{animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:380px){ .kpi b{font-size:14px} td,th{padding-left:2px;padding-right:2px} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Theory vs Dry Real<small id="upd">NCM Material Consumption</small></h1>
+  <button class="ib" id="btnRefresh" title="Refresh">&#x21bb;</button>
+  <button class="ib" id="btnSet" title="Settings">&#9881;</button>
+</header>
+
+<main>
+  <div class="card" id="setup">
+    <p><b>Data link</b><br>Paste the web-app link of the sheet (it ends with <code>?k=…</code>).</p>
+    <input id="apiIn" placeholder="https://script.google.com/macros/s/…/exec?k=…" autocomplete="off">
+    <button class="btn" id="apiSave">Save</button>
+  </div>
+
+  <div id="msg"></div>
+
+  <div class="card" id="filters">
+    <div class="grid">
+      <div><label for="from">Date From</label><input type="date" id="from"></div>
+      <div><label for="to">Date To</label><input type="date" id="to"></div>
+    </div>
+    <div class="chips">
+      <button class="chip" data-q="this">This month</button>
+      <button class="chip" data-q="last">Last month</button>
+      <button class="chip" data-q="all">All</button>
+    </div>
+    <div class="grid" style="margin-top:10px">
+      <div><label for="plant">Plant</label><select id="plant"></select></div>
+      <div><label for="mix">Design Mix</label><select id="mix"></select></div>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><span>Theory</span><b id="kTh">–</b></div>
+    <div class="kpi"><span>Dry Real</span><b id="kDr">–</b></div>
+    <div class="kpi"><span>Difference</span><b id="kDf">–</b><i id="kPc"></i></div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Material</th><th>Theory</th><th>Dry Real</th><th>Diff</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="note" id="foot"></div>
+  </div>
+</main>
+
+<script>
+(function(){
+  var LS_API='ncm_td_api', LS_DATA='ncm_td_data', LS_F='ncm_td_filters';
+  var D=null, busy=false;
+  var $=function(id){return document.getElementById(id)};
+  function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+  function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+
+  // a personal link can carry the data link after '#api=' (the part after # never reaches GitHub);
+  // it is kept in the address so a Home-Screen shortcut made from it keeps working
+  (function(){
+    var m = location.hash.match(/[#&]api=([^&]+)/);
+    if(m){ try{ lsSet(LS_API, decodeURIComponent(m[1])); }catch(e){} }
+  })();
+
+  // link: from the Android app if it carries one, otherwise saved on this device
+  function api(){
+    try{ if(window.NCMApp && NCMApp.api) { var a=NCMApp.api(); if(a) return a; } }catch(e){}
+    return lsGet(LS_API)||'';
+  }
+
+  function pad(n){return (n<10?'0':'')+n}
+  function iso(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  function monthRange(off){
+    var n=new Date(), a=new Date(n.getFullYear(), n.getMonth()+off, 1), b=new Date(n.getFullYear(), n.getMonth()+off+1, 0);
+    return [iso(a), iso(b)];
+  }
+  function fmt(v){
+    var a=Math.abs(v), dec = (a>=1000 || a===0) ? 0 : (a>=10 ? 1 : 2);
+    return v.toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+  }
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+  function message(html, cls){ $('msg').innerHTML = html ? '<div class="warn '+(cls||'')+'">'+html+'</div>' : ''; }
+
+  function saveFilters(){
+    lsSet(LS_F, JSON.stringify({from:$('from').value,to:$('to').value,plant:$('plant').value,mix:$('mix').value}));
+  }
+
+  function fillSelect(sel, items, keep){
+    var cur = keep!=null ? keep : sel.value;
+    var h='<option value="">All</option>';
+    items.forEach(function(x){ h+='<option value="'+esc(x.v)+'">'+esc(x.t)+'</option>'; });
+    sel.innerHTML=h;
+    sel.value = items.some(function(x){return x.v===cur}) ? cur : '';
+  }
+
+  function refreshLists(keepPlant, keepMix){
+    if(!D) return;
+    var f=$('from').value||'0000', t=$('to').value||'9999';
+    var pl = D.plants.map(function(p,i){return {v:String(i),t:p}}).filter(function(x){return x.t})
+                .sort(function(a,b){return a.t.localeCompare(b.t)});
+    fillSelect($('plant'), pl, keepPlant);
+    var p=$('plant').value, used={};
+    D.rows.forEach(function(r){ if(r[0]>=f && r[0]<=t && (p===''||String(r[1])===p)) used[r[2]]=1; });
+    var mx = Object.keys(used).map(function(i){return {v:i,t:D.mixes[i]}}).filter(function(x){return x.t})
+                .sort(function(a,b){return a.t.localeCompare(b.t)});
+    fillSelect($('mix'), mx, keepMix);
+  }
+
+  function render(){
+    if(!D){ $('tb').innerHTML=''; return; }
+    var f=$('from').value||'0000', t=$('to').value||'9999', p=$('plant').value, m=$('mix').value;
+    var agg={}, th=0, dr=0;
+    D.rows.forEach(function(r){
+      if(r[0]<f || r[0]>t) return;
+      if(p!=='' && String(r[1])!==p) return;
+      if(m!=='' && String(r[2])!==m) return;
+      var a = agg[r[3]] || (agg[r[3]]=[0,0]);
+      a[0]+=r[4]; a[1]+=r[5]; th+=r[4]; dr+=r[5];
+    });
+    var keys=Object.keys(agg).filter(function(k){return D.mats[k] && (agg[k][0]||agg[k][1])})
+             .sort(function(a,b){return D.mats[a].localeCompare(D.mats[b])});
+    var h='';
+    keys.forEach(function(k){
+      var a=agg[k], df=a[0]-a[1];
+      h+='<tr><td>'+esc(D.mats[k])+'</td><td>'+fmt(a[0])+'</td><td>'+fmt(a[1])+'</td><td class="'+(df<0?'neg':df>0?'pos':'')+'">'+fmt(df)+'</td></tr>';
+    });
+    var dft=th-dr;
+    if(keys.length) h+='<tr class="tot"><td>GRAND TOTAL</td><td>'+fmt(th)+'</td><td>'+fmt(dr)+'</td><td class="'+(dft<0?'neg':dft>0?'pos':'')+'">'+fmt(dft)+'</td></tr>';
+    else h='<tr><td colspan="4" class="note">No data for this selection.</td></tr>';
+    $('tb').innerHTML=h;
+    $('kTh').textContent=fmt(th); $('kDr').textContent=fmt(dr);
+    $('kDf').textContent=fmt(dft); $('kDf').className = dft<0?'neg':dft>0?'pos':'';
+    $('kPc').textContent = dr ? (dft/dr*100).toFixed(2)+'% of Dry' : '';
+    $('kPc').className = $('kDf').className;
+    $('foot').textContent = (keys.length && th===0) ? 'No Theory figures in this period — the plant reports carry Theory from September 2026.' : '';
+  }
+
+  function setData(d){
+    D=d; $('upd').textContent='Updated '+d.updated;
+    var s={}; try{ s=JSON.parse(lsGet(LS_F)||'{}') }catch(e){}
+    refreshLists(s.plant, s.mix); render();
+  }
+
+  function load(){
+    var a=api();
+    if(!a){ $('setup').style.display='block'; return; }
+    if(busy) return; busy=true;
+    $('btnRefresh').classList.add('spin');
+    fetch(a, {cache:'no-store', redirect:'follow'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.error){ throw new Error(d.error==='unauthorized' ? 'The link key is wrong — open settings and paste the link again.' : d.error); }
+        var n=new Date(); d.updated = iso(n)+' '+pad(n.getHours())+':'+pad(n.getMinutes());   // phone's own clock
+        lsSet(LS_DATA, JSON.stringify(d)); message(''); setData(d);
+      })
+      .catch(function(e){
+        message((D ? 'Showing the last saved data. ' : '')+'Could not load: '+esc(e.message||e), D?'':'err');
+      })
+      .then(function(){ busy=false; $('btnRefresh').classList.remove('spin'); });
+  }
+
+  // ---- wiring
+  var s={}; try{ s=JSON.parse(lsGet(LS_F)||'{}') }catch(e){}
+  var tm=monthRange(0);
+  $('from').value = s.from || tm[0]; $('to').value = s.to || tm[1];
+
+  ['from','to'].forEach(function(id){ $(id).addEventListener('change', function(){
+    document.querySelectorAll('.chip').forEach(function(c){c.classList.remove('on')});
+    refreshLists(); render(); saveFilters(); }); });
+  $('plant').addEventListener('change', function(){ refreshLists(); render(); saveFilters(); });
+  $('mix').addEventListener('change', function(){ render(); saveFilters(); });
+  document.querySelectorAll('.chip').forEach(function(c){ c.addEventListener('click', function(){
+    var q=c.getAttribute('data-q'), r = q==='this'?monthRange(0) : q==='last'?monthRange(-1) : ['',''];
+    if(q==='all' && D && D.rows.length){ var mn='9999',mxd='0000'; D.rows.forEach(function(x){ if(x[0]<mn)mn=x[0]; if(x[0]>mxd)mxd=x[0]; }); r=[mn,mxd]; }
+    $('from').value=r[0]; $('to').value=r[1];
+    document.querySelectorAll('.chip').forEach(function(o){o.classList.toggle('on', o===c)});
+    refreshLists(); render(); saveFilters();
+  }); });
+  $('btnRefresh').addEventListener('click', load);
+  $('btnSet').addEventListener('click', function(){
+    var st=$('setup'); st.style.display = st.style.display==='block' ? 'none' : 'block';
+    $('apiIn').value = lsGet(LS_API)||'';
+  });
+  $('apiSave').addEventListener('click', function(){
+    var v=$('apiIn').value.trim(); if(!v) return;
+    lsSet(LS_API, v); $('setup').style.display='none'; load();
+  });
+
+  var cached=null; try{ cached=JSON.parse(lsGet(LS_DATA)||'null') }catch(e){}
+  if(cached && cached.rows) setData(cached);
+  load();
+})();
+</script>
+</body>
+</html>
