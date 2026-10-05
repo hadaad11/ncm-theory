@@ -108,7 +108,8 @@ td.pc{font-size:11.5px}
   <div class="card">
     <div class="seg" id="seg">
       <button data-v="mat">Materials</button>
-      <button data-v="mix">Mixes with differences</button>
+      <button data-v="mix">Mix differences</button>
+      <button data-v="mixdry">Mix vs Dry</button>
     </div>
     <table>
       <thead id="th"></thead>
@@ -188,7 +189,7 @@ td.pc{font-size:11.5px}
     fillSelect($('mix'), mx, keepMix);
   }
 
-  var VIEW = lsGet('ncm_td_view')==='mix' ? 'mix' : 'mat';
+  var VIEW = ({mix:1, mixdry:1})[lsGet('ncm_td_view')] ? lsGet('ncm_td_view') : 'mat';
   var TH_DAYS = {};     // day|plant groups whose reports carry Theory (from Sep 2026)
   function cls(v){ return v<0?'neg':v>0?'pos':''; }
   function kpis(th, dr){
@@ -203,8 +204,9 @@ td.pc{font-size:11.5px}
     if(!D){ $('tb').innerHTML=''; return; }
     var f=$('from').value||'0000', t=$('to').value||'9999', p=$('plant').value, m=$('mix').value;
     document.querySelectorAll('#seg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-v')===VIEW); });
-    $('th').innerHTML = '<tr><th>'+(VIEW==='mix'?'Design Mix':'Material')+'</th><th>Theory</th><th>Dry Real</th><th>Diff</th></tr>';
+    $('th').innerHTML = '<tr><th>'+(VIEW==='mix'?'Design Mix':'Material')+'</th><th>'+(VIEW==='mixdry'?'Mix Theory':'Theory')+'</th><th>Dry Real</th><th>Diff</th></tr>';
     if(VIEW==='mix') return renderMixes(f,t,p,m);
+    if(VIEW==='mixdry') return renderMixDry(f,t,p,m);
     var agg={}, th=0, dr=0;
     D.rows.forEach(function(r){
       if(r[0]<f || r[0]>t) return;
@@ -226,6 +228,34 @@ td.pc{font-size:11.5px}
     $('tb').innerHTML=h;
     kpis(th, dr);
     $('foot').textContent = (keys.length && th===0) ? 'No Theory figures in this period — the plant reports carry Theory from September 2026.' : '';
+  }
+
+  // Mix Theory (m3 from the reports x approved mix designs) vs Dry Real, per material
+  function renderMixDry(f,t,p,m){
+    var agg={}, th=0, dr=0, has=false;
+    D.rows.forEach(function(r){
+      if(r.length < 8) return;                         // older data link without mix theory
+      has=true;
+      if(r[0]<f || r[0]>t) return;
+      if(p!=='' && String(r[1])!==p) return;
+      if(m!=='' && String(r[2])!==m) return;
+      if(!r[6] && !r[7]) return;
+      var a = agg[r[3]] || (agg[r[3]]=[0,0]);
+      a[0]+=r[6]; a[1]+=r[7]; th+=r[6]; dr+=r[7];
+    });
+    var keys=Object.keys(agg).filter(function(k){ return D.mats[k] && (agg[k][0]||agg[k][1]); })
+             .sort(function(a,b){ return D.mats[a].localeCompare(D.mats[b]); });
+    var h='';
+    keys.forEach(function(k){
+      var a=agg[k], df=a[0]-a[1], pc=a[0] ? df/a[0]*100 : null;
+      h+='<tr><td>'+esc(D.mats[k])+(pc===null?'':'<small><span class="'+cls(df)+'">'+(pc>0?'+':'')+pc.toFixed(2)+'%</span></small>')+'</td><td>'+fmt(a[0])+'</td><td>'+fmt(a[1])+'</td><td class="'+cls(df)+'">'+fmt(df)+'</td></tr>';
+    });
+    var dft=th-dr;
+    if(keys.length) h+='<tr class="tot"><td>GRAND TOTAL<small><span class="'+cls(dft)+'">'+(th?((dft>0?'+':'')+(dft/th*100).toFixed(2)+'%'):'')+'</span></small></td><td>'+fmt(th)+'</td><td>'+fmt(dr)+'</td><td class="'+cls(dft)+'">'+fmt(dft)+'</td></tr>';
+    else h='<tr><td colspan="4" class="note">'+(has?'No data for this selection (mix designs start September 2026).':'Tap ↻ to refresh — needs the updated sheet script.')+'</td></tr>';
+    $('tb').innerHTML=h;
+    kpis(th, dr);
+    $('foot').textContent = keys.length ? 'Mix Theory = m³ in the reports × approved mix designs · only mixes that have a design are counted · ICE is in Dry, Water in Theory.' : '';
   }
 
   // mixes whose Theory and Dry Real differ, biggest difference first
