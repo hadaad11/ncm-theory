@@ -68,7 +68,7 @@ td.pc{font-size:11.5px}
 </head>
 <body>
 <header>
-  <h1>Theory vs Dry Real<small id="upd">NCM Material Consumption</small></h1>
+  <h1>Mix Theory vs Dry Real<small id="upd">NCM Material Consumption</small></h1>
   <button class="ib" id="btnImport" title="Import new reports from Drive">&#x21e9;</button>
   <button class="ib" id="btnRefresh" title="Refresh">&#x21bb;</button>
   <button class="ib" id="btnSet" title="Settings">&#9881;</button>
@@ -100,17 +100,15 @@ td.pc{font-size:11.5px}
   </div>
 
   <div class="kpis">
-    <div class="kpi"><span>Theory</span><b id="kTh">–</b></div>
+    <div class="kpi"><span>Mix Theory</span><b id="kTh">–</b></div>
     <div class="kpi"><span>Dry Real</span><b id="kDr">–</b></div>
     <div class="kpi"><span>Difference</span><b id="kDf">–</b><i id="kPc"></i></div>
   </div>
 
   <div class="card">
     <div class="seg" id="seg">
-      <button data-v="mat">Materials</button>
-      <button data-v="mix">Mix differences</button>
-      <button data-v="mixdry">Mix vs Dry</button>
-      <button data-v="mixdrymix">Mix vs Dry · mixes</button>
+      <button data-v="mixdry">Materials</button>
+      <button data-v="mixdrymix">Mixes</button>
     </div>
     <table>
       <thead id="th"></thead>
@@ -190,7 +188,7 @@ td.pc{font-size:11.5px}
     fillSelect($('mix'), mx, keepMix);
   }
 
-  var VIEW = ({mix:1, mixdry:1, mixdrymix:1})[lsGet('ncm_td_view')] ? lsGet('ncm_td_view') : 'mat';
+  var VIEW = lsGet('ncm_td_view')==='mixdrymix' ? 'mixdrymix' : 'mixdry';   // only the Mix vs Dry views are shown
   var TH_DAYS = {};     // day|plant groups whose reports carry Theory (from Sep 2026)
   function cls(v){ return v<0?'neg':v>0?'pos':''; }
   function kpis(th, dr){
