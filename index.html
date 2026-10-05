@@ -57,8 +57,8 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
 .btn{width:100%;height:44px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;font-weight:600;margin-top:10px;cursor:pointer}
 .spin{animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-.seg{display:flex;background:var(--chip);border-radius:10px;padding:3px;gap:3px;margin-bottom:10px}
-.seg button{flex:1;border:0;background:transparent;color:var(--brand);font:inherit;font-size:13.5px;padding:8px 4px;border-radius:8px;cursor:pointer}
+.seg{display:flex;flex-wrap:wrap;background:var(--chip);border-radius:10px;padding:3px;gap:3px;margin-bottom:10px}
+.seg button{flex:1 1 45%;border:0;background:transparent;color:var(--brand);font:inherit;font-size:13.5px;padding:8px 4px;border-radius:8px;cursor:pointer}
 .seg button.on{background:#fff;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.1)}
 td small{display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:2px}
 tr.go{cursor:pointer} tr.go:active td{background:#f0f5fb}
@@ -110,6 +110,7 @@ td.pc{font-size:11.5px}
       <button data-v="mat">Materials</button>
       <button data-v="mix">Mix differences</button>
       <button data-v="mixdry">Mix vs Dry</button>
+      <button data-v="mixdrymix">Mix vs Dry · mixes</button>
     </div>
     <table>
       <thead id="th"></thead>
@@ -189,7 +190,7 @@ td.pc{font-size:11.5px}
     fillSelect($('mix'), mx, keepMix);
   }
 
-  var VIEW = ({mix:1, mixdry:1})[lsGet('ncm_td_view')] ? lsGet('ncm_td_view') : 'mat';
+  var VIEW = ({mix:1, mixdry:1, mixdrymix:1})[lsGet('ncm_td_view')] ? lsGet('ncm_td_view') : 'mat';
   var TH_DAYS = {};     // day|plant groups whose reports carry Theory (from Sep 2026)
   function cls(v){ return v<0?'neg':v>0?'pos':''; }
   function kpis(th, dr){
@@ -204,8 +205,9 @@ td.pc{font-size:11.5px}
     if(!D){ $('tb').innerHTML=''; return; }
     var f=$('from').value||'0000', t=$('to').value||'9999', p=$('plant').value, m=$('mix').value;
     document.querySelectorAll('#seg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-v')===VIEW); });
-    $('th').innerHTML = '<tr><th>'+(VIEW==='mix'?'Design Mix':'Material')+'</th><th>'+(VIEW==='mixdry'?'Mix Theory':'Theory')+'</th><th>Dry Real</th><th>Diff</th></tr>';
+    $('th').innerHTML = '<tr><th>'+((VIEW==='mix'||VIEW==='mixdrymix')?'Design Mix':'Material')+'</th><th>'+((VIEW==='mixdry'||VIEW==='mixdrymix')?'Mix Theory':'Theory')+'</th><th>Dry Real</th><th>Diff</th></tr>';
     if(VIEW==='mix') return renderMixes(f,t,p,m);
+    if(VIEW==='mixdrymix') return renderMixDryMixes(f,t,p,m);
     if(VIEW==='mixdry') return renderMixDry(f,t,p,m);
     var agg={}, th=0, dr=0;
     D.rows.forEach(function(r){
@@ -256,6 +258,45 @@ td.pc{font-size:11.5px}
     $('tb').innerHTML=h;
     kpis(th, dr);
     $('foot').textContent = keys.length ? 'Mix Theory = m³ in the reports × approved mix designs · only mixes that have a design are counted · ICE is in Dry, Water in Theory.' : '';
+  }
+
+  // per mix: Mix Theory (approved designs) vs Dry Real, biggest difference first; tap = that mix's materials
+  function renderMixDryMixes(f,t,p,m){
+    var mx={}, th=0, dr=0;
+    D.rows.forEach(function(r){
+      if(r.length < 8) return;
+      if(r[0]<f || r[0]>t) return;
+      if(p!=='' && String(r[1])!==p) return;
+      if(m!=='' && String(r[2])!==m) return;
+      if(!r[6] && !r[7]) return;
+      var o = mx[r[2]] || (mx[r[2]]={th:0, dr:0, mat:{}});
+      o.th+=r[6]; o.dr+=r[7]; th+=r[6]; dr+=r[7];
+      var nm=D.mats[r[3]]; if(nm==='ICE' || nm==='Water') nm='Water+ICE';   // the designs have no ice, it is part of Water
+      o.mat[nm]=(o.mat[nm]||0)+r[6]-r[7];
+    });
+    var keys=Object.keys(mx).filter(function(k){ return D.mixes[k] && Math.round(mx[k].th-mx[k].dr)!==0; })
+      .sort(function(a,b){ return Math.abs(mx[b].th-mx[b].dr) - Math.abs(mx[a].th-mx[a].dr); });
+    var h='';
+    keys.forEach(function(k){
+      var o=mx[k], df=o.th-o.dr, pc=o.th ? df/o.th*100 : 0, big='', bv=0;
+      if(Math.abs(pc)<0.005) pc=0;
+      Object.keys(o.mat).forEach(function(n){ if(Math.abs(o.mat[n])>Math.abs(bv)){ bv=o.mat[n]; big=n; } });
+      h+='<tr class="go" data-k="'+k+'"><td>'+esc(D.mixes[k])+
+         '<small><span class="'+cls(df)+'">'+(pc>0?'+':'')+pc.toFixed(2)+'%</span>'+
+         (big ? ' · mostly '+esc(big)+' <span class="'+cls(bv)+'">'+(bv>0?'+':'')+fmt(bv)+'</span>' : '')+'</small></td>'+
+         '<td>'+fmt(o.th)+'</td><td>'+fmt(o.dr)+'</td><td class="'+cls(df)+'">'+fmt(df)+'</td></tr>';
+    });
+    var dft=th-dr;
+    if(keys.length) h+='<tr class="tot"><td>TOTAL ('+keys.length+' mixes)</td><td>'+fmt(th)+'</td><td>'+fmt(dr)+'</td><td class="'+cls(dft)+'">'+fmt(dft)+'</td></tr>';
+    else h='<tr><td colspan="4" class="note">No differences in this selection (mix designs start September 2026).</td></tr>';
+    $('tb').innerHTML=h;
+    kpis(th, dr);
+    $('foot').textContent = keys.length ? 'Mix Theory = m³ × approved mix designs · ICE counted with Water · tap a mix to see its materials.' : '';
+    document.querySelectorAll('#tb tr.go').forEach(function(tr){ tr.addEventListener('click', function(){
+      $('mix').value = tr.getAttribute('data-k');
+      if($('mix').value !== tr.getAttribute('data-k')) return;
+      VIEW='mixdry'; lsSet('ncm_td_view', VIEW); saveFilters(); render(); window.scrollTo(0,0);
+    }); });
   }
 
   // mixes whose Theory and Dry Real differ, biggest difference first
@@ -340,7 +381,7 @@ td.pc{font-size:11.5px}
   }); });
   document.querySelectorAll('#seg button').forEach(function(b){ b.addEventListener('click', function(){
     VIEW=b.getAttribute('data-v'); lsSet('ncm_td_view', VIEW);
-    if(VIEW==='mix'){ $('mix').value=''; saveFilters(); }      // the mixes list shows every mix
+    if(VIEW==='mix' || VIEW==='mixdrymix'){ $('mix').value=''; saveFilters(); }      // the mixes list shows every mix
     render();
   }); });
   $('btnRefresh').addEventListener('click', load);
