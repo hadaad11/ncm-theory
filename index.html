@@ -71,6 +71,7 @@ td.pc{font-size:11.5px}
   <h1>Mix Theory vs Dry Real<small id="upd">NCM Material Consumption</small></h1>
   <button class="ib" id="btnImport" title="Import new reports from Drive">&#x21e9;</button>
   <button class="ib" id="btnRefresh" title="Refresh">&#x21bb;</button>
+  <button class="ib" id="btnMail" title="Email the report now">&#9993;</button>
   <button class="ib" id="btnSet" title="Settings">&#9881;</button>
 </header>
 
@@ -383,6 +384,39 @@ td.pc{font-size:11.5px}
     render();
   }); });
   $('btnRefresh').addEventListener('click', load);
+
+  // email the month-to-date Mix Theory vs Dry report now. The request is stored in the sheet and the
+  // office PC (which sends as m.elhadad@edncm.com) picks it up within ~2 minutes.
+  var mailing=false;
+  function hm(iso){ var d=new Date(iso); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+  $('btnMail').addEventListener('click', function(){
+    var a=api(); if(!a || mailing) return;
+    if(!confirm('Send the Mix Theory vs Dry report by email now?')) return;
+    mailing=true; $('btnMail').classList.add('spin');
+    var base=a+(a.indexOf('?')>-1?'&':'?'), t0=Date.now(), before=null;
+    fetch(base+'run=mailreq', {cache:'no-store', redirect:'follow'})
+      .then(function(r){ return r.json(); })
+      .then(function(s){
+        if(s.error) throw new Error(s.error);
+        if(s.mats){ throw new Error('the sheet script needs updating'); }
+        before = s.last && s.last.at;
+        message('Mail requested ✓ — it goes out from m.elhadad@edncm.com within about 2 minutes (the office PC sends it).');
+        (function wait(){
+          if(Date.now()-t0 > 6*60*1000){ message('Still waiting — the office PC may be off. It will send as soon as it is back on.'); done(); return; }
+          setTimeout(function(){
+            fetch(base+'run=mailstatus', {cache:'no-store', redirect:'follow'}).then(function(r){ return r.json(); })
+              .then(function(st){
+                if(st.last && st.last.at !== before){
+                  var ok = String(st.last.info).indexOf('FAILED') < 0;
+                  message((ok?'Mail sent at '+hm(st.last.at)+' ✓ ':'Mail failed: ')+esc(st.last.info), ok?'':'err'); done();
+                } else wait();
+              }).catch(wait);
+          }, 20000);
+        })();
+      })
+      .catch(function(e){ message('Could not request the mail: '+esc(e.message||e), 'err'); done(); });
+    function done(){ mailing=false; $('btnMail').classList.remove('spin'); }
+  });
 
   // pull new plant reports from the Drive folder now (same job as the 7 AM run)
   var importing=false;
