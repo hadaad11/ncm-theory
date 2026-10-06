@@ -63,6 +63,8 @@ tr.tot td{font-weight:700;border-top:2px solid var(--brand);border-bottom:0;back
 td small{display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:2px}
 tr.go{cursor:pointer} tr.go:active td{background:#f0f5fb}
 td.pc{font-size:11.5px}
+#btnPdf{font-size:12px;font-weight:700;letter-spacing:.3px}
+@media (max-width:420px){ header{gap:6px} .ib{width:34px;height:34px;font-size:16px} #btnPdf{font-size:11px} }
 @media (max-width:380px){ .kpi b{font-size:14px} td,th{padding-left:2px;padding-right:2px} }
 </style>
 </head>
@@ -72,6 +74,7 @@ td.pc{font-size:11.5px}
   <button class="ib" id="btnImport" title="Import new reports from Drive">&#x21e9;</button>
   <button class="ib" id="btnRefresh" title="Refresh">&#x21bb;</button>
   <button class="ib" id="btnMail" title="Email the report now">&#9993;</button>
+  <button class="ib" id="btnPdf" title="Export PDF / share">PDF</button>
   <button class="ib" id="btnSet" title="Settings">&#9881;</button>
 </header>
 
@@ -389,8 +392,9 @@ td.pc{font-size:11.5px}
   // The user sends it from his own mailbox - no server, no Google, no office PC.
   var MAIL_TO = 'a.salah@edncm.com';
   function dm2(s){ return s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : ''; }
-  $('btnMail').addEventListener('click', function(){
-    if(!D) return;
+  // what is on screen (same filters): Mix Theory vs Dry per material + top 5 mixes — used by ✉ and PDF
+  function reportData(){
+    if(!D) return null;
     var f=$('from').value||'0000', t=$('to').value||'9999', p=$('plant').value, m=$('mix').value;
     var mats={}, mixes={}, T=0, R=0, first='', last='';
     D.rows.forEach(function(r){
@@ -403,29 +407,100 @@ td.pc{font-size:11.5px}
       T+=r[6]; R+=r[7];
       if(!first || r[0]<first) first=r[0]; if(r[0]>last) last=r[0];
     });
-    if(!T && !R){ message('Nothing to send for this selection.'); return; }
-    var pc=function(df,th){ return th ? ' ('+(df>0?'+':'')+(df/th*100).toFixed(2)+'%)' : ''; };
+    if(!T && !R) return null;
+    var rows=Object.keys(mats).filter(function(k){ return D.mats[k] && (mats[k][0]||mats[k][1]); })
+      .sort(function(a,b){ return D.mats[a].localeCompare(D.mats[b]); })
+      .map(function(k){ return {name:D.mats[k], th:mats[k][0], dr:mats[k][1]}; });
+    var top=Object.keys(mixes).filter(function(k){ return D.mixes[k] && Math.round(mixes[k][0]-mixes[k][1])!==0; })
+      .sort(function(a,b){ return Math.abs(mixes[b][0]-mixes[b][1])-Math.abs(mixes[a][0]-mixes[a][1]); }).slice(0,5)
+      .map(function(k){ return {name:D.mixes[k], th:mixes[k][0], dr:mixes[k][1]}; });
+    return {first:first, last:last, T:T, R:R, rows:rows, top:top,
+            scope:'Plant: '+(p===''?'All':D.plants[p])+(m===''?'':' · Mix: '+D.mixes[m]),
+            title:'NCM - Mix Theory vs Dry '+dm2(first)+' to '+dm2(last)};
+  }
+  function pct(df,th){ return th ? (df>0?'+':'')+(df/th*100).toFixed(2)+'%' : ''; }
+
+  $('btnMail').addEventListener('click', function(){
+    var d=reportData(); if(!d){ message('Nothing to send for this selection.'); return; }
+    var pc=function(df,th){ return th ? ' ('+pct(df,th)+')' : ''; };
     var L=[];
     L.push('Mix Theory vs Dry Real');
-    L.push(dm2(first)+' to '+dm2(last)+' · Plant: '+(p===''?'All':D.plants[p])+(m===''?'':' · Mix: '+D.mixes[m]));
+    L.push(dm2(d.first)+' to '+dm2(d.last)+' · '+d.scope);
     L.push('');
-    L.push('TOTAL: Mix '+fmt(T)+' | Dry '+fmt(R)+' | Diff '+fmt(T-R)+pc(T-R,T));
+    L.push('TOTAL: Mix '+fmt(d.T)+' | Dry '+fmt(d.R)+' | Diff '+fmt(d.T-d.R)+pc(d.T-d.R,d.T));
     L.push('');
     L.push('By material (Mix | Dry | Diff):');
-    Object.keys(mats).filter(function(k){ return D.mats[k] && (mats[k][0]||mats[k][1]); })
-      .sort(function(a,b){ return D.mats[a].localeCompare(D.mats[b]); })
-      .forEach(function(k){ var a=mats[k], df=a[0]-a[1]; L.push('- '+D.mats[k]+': '+fmt(a[0])+' | '+fmt(a[1])+' | '+fmt(df)+pc(df,a[0])); });
-    var top=Object.keys(mixes).filter(function(k){ return D.mixes[k] && Math.round(mixes[k][0]-mixes[k][1])!==0; })
-      .sort(function(a,b){ return Math.abs(mixes[b][0]-mixes[b][1])-Math.abs(mixes[a][0]-mixes[a][1]); }).slice(0,5);
-    if(top.length){
+    d.rows.forEach(function(x){ var df=x.th-x.dr; L.push('- '+x.name+': '+fmt(x.th)+' | '+fmt(x.dr)+' | '+fmt(df)+pc(df,x.th)); });
+    if(d.top.length){
       L.push(''); L.push('Mixes with the biggest difference:');
-      top.forEach(function(k){ var o=mixes[k], df=o[0]-o[1]; L.push('- '+D.mixes[k]+': '+fmt(df)+pc(df,o[0])); });
+      d.top.forEach(function(x){ var df=x.th-x.dr; L.push('- '+x.name+': '+fmt(df)+pc(df,x.th)); });
     }
     L.push(''); L.push('Mix Theory = m3 in the plant reports x approved mix designs. ICE is in Dry only (the designs count it inside Water).');
-    var subject='NCM - Mix Theory vs Dry '+dm2(first)+' to '+dm2(last);
+    var subject=d.title;
     var url='mailto:'+MAIL_TO+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(L.join('\n'));
     window.__lastMail=url;                            // kept for testing
     location.href=url;
+  });
+
+  // PDF: built on the phone (jsPDF), then the share sheet -> Mail/Outlook attaches it. Falls back to a download.
+  // The libraries are loaded ahead of time: the share sheet must open straight from the tap (iPhone rule).
+  (function(){
+    ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+     'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js']
+    .reduce(function(prev, src){ return prev.then(function(){ return new Promise(function(ok){
+      var s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=ok; document.head.appendChild(s); }); }); }, Promise.resolve());
+  })();
+  function latin(s){ return String(s).replace(/[^\x20-\x7E -ÿ]/g, '?'); }   // built-in PDF fonts have no Cyrillic
+  function buildPdf(d){
+    var doc = new window.jspdf.jsPDF({unit:'pt', format:'a4'}), red=[192,57,43], green=[30,125,69];
+    doc.setFont('helvetica','bold'); doc.setFontSize(17); doc.setTextColor(31,78,121);
+    doc.text('Mix Theory vs Dry Real', 40, 50);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(107,118,132);
+    doc.text(latin(dm2(d.first)+' to '+dm2(d.last)+'  ·  '+d.scope), 40, 68);
+    var col = function(v){ return v<0 ? red : (v>0 ? green : [27,36,48]); };
+    var body = d.rows.map(function(x){ var df=x.th-x.dr; return [latin(x.name), fmt(x.th), fmt(x.dr), fmt(df), pct(df,x.th)]; });
+    var dft=d.T-d.R;
+    body.push(['GRAND TOTAL', fmt(d.T), fmt(d.R), fmt(dft), pct(dft,d.T)]);
+    doc.autoTable({startY:80, head:[['Material','Mix Theory','Dry Real','Difference','%']], body:body, theme:'grid',
+      styles:{fontSize:9.5, cellPadding:5, lineColor:[227,232,239]}, headStyles:{fillColor:[31,78,121], halign:'right'},
+      columnStyles:{0:{halign:'left'},1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'}},
+      didParseCell:function(c){
+        if(c.section==='head' && c.column.index===0) c.cell.styles.halign='left';
+        if(c.section!=='body') return;
+        var last = c.row.index===body.length-1;
+        if(last){ c.cell.styles.fontStyle='bold'; c.cell.styles.fillColor=[242,246,251]; }
+        if(c.column.index>=3){ var v = last ? dft : d.rows[c.row.index].th-d.rows[c.row.index].dr; c.cell.styles.textColor=col(v); }
+      }});
+    if(d.top.length){
+      var y = doc.lastAutoTable.finalY + 26;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(31,78,121);
+      doc.text('Mixes with the biggest difference', 40, y);
+      doc.autoTable({startY:y+8, head:[['Design Mix','Difference','%']],
+        body:d.top.map(function(x){ var df=x.th-x.dr; return [latin(x.name), fmt(df), pct(df,x.th)]; }), theme:'grid',
+        styles:{fontSize:9.5, cellPadding:5, lineColor:[227,232,239]}, headStyles:{fillColor:[31,78,121], halign:'right'},
+        columnStyles:{0:{halign:'left'},1:{halign:'right'},2:{halign:'right'}},
+        didParseCell:function(c){
+          if(c.section==='head' && c.column.index===0) c.cell.styles.halign='left';
+          if(c.section==='body' && c.column.index>=1){ var x=d.top[c.row.index]; c.cell.styles.textColor=col(x.th-x.dr); }
+        }});
+    }
+    var fy = doc.lastAutoTable.finalY + 20;
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(107,118,132);
+    doc.text(doc.splitTextToSize('Mix Theory = m3 in the plant reports x approved mix designs. Only mixes that have a design are counted. '+
+      'Red = more used than the design. ICE is in Dry Real only (the designs count it inside Water).', 515), 40, fy);
+    return doc;
+  }
+  $('btnPdf').addEventListener('click', function(){
+    var d=reportData(); if(!d){ message('Nothing to export for this selection.'); return; }
+    if(!window.jspdf || !window.jspdf.jsPDF || !window.jspdf.jsPDF.API.autoTable){ message('PDF tools are still loading — try again in a few seconds.', 'err'); return; }
+    var doc=buildPdf(d), name=d.title.replace(/[\/\\:]/g,'-')+'.pdf';
+    var file=null; try{ file=new File([doc.output('blob')], name, {type:'application/pdf'}); }catch(e){}
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:d.title}).catch(function(){});   // pick Mail / Outlook -> PDF attached
+    } else {
+      doc.save(name);
+      message('PDF downloaded — attach it to an email.');
+    }
   });
 
   // pull new plant reports from the Drive folder now (same job as the 7 AM run)
