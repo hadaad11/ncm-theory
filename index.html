@@ -124,6 +124,16 @@ td.pc{font-size:11.5px}
 
 <script>
 (function(){
+  // the phone keeps an old copy of this page; on every open, compare with the live one and reload if newer
+  var APP_VERSION = '2026-10-06.2';
+  if(location.protocol === 'https:'){
+    fetch(location.pathname + '?nocache=' + Date.now(), {cache:'no-store'})
+      .then(function(r){ return r.text(); })
+      .then(function(t){
+        var m = t.match(/APP_VERSION = '([^']+)'/);
+        if(m && m[1] !== APP_VERSION) location.replace(location.pathname + '?v=' + encodeURIComponent(m[1]) + location.hash);
+      }).catch(function(){});
+  }
   var LS_API='ncm_td_api', LS_DATA='ncm_td_data', LS_F='ncm_td_filters';
   var D=null, busy=false;
   var $=function(id){return document.getElementById(id)};
