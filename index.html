@@ -385,37 +385,47 @@ td.pc{font-size:11.5px}
   }); });
   $('btnRefresh').addEventListener('click', load);
 
-  // email the month-to-date Mix Theory vs Dry report now. The request is stored in the sheet and the
-  // office PC (which sends as m.elhadad@edncm.com) picks it up within ~2 minutes.
-  var mailing=false;
-  function hm(iso){ var d=new Date(iso); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+  // ✉ : open the phone's own mail app with the report already written (what is on screen, same filters).
+  // The user sends it from his own mailbox - no server, no Google, no office PC.
+  var MAIL_TO = 'a.salah@edncm.com';
+  function dm2(s){ return s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : ''; }
   $('btnMail').addEventListener('click', function(){
-    var a=api(); if(!a || mailing) return;
-    if(!confirm('Send the Mix Theory vs Dry report by email now?')) return;
-    mailing=true; $('btnMail').classList.add('spin');
-    var base=a+(a.indexOf('?')>-1?'&':'?'), t0=Date.now(), before=null;
-    fetch(base+'run=mailreq', {cache:'no-store', redirect:'follow'})
-      .then(function(r){ return r.json(); })
-      .then(function(s){
-        if(s.error) throw new Error(s.error);
-        if(s.mats){ throw new Error('the sheet script needs updating'); }
-        before = s.last && s.last.at;
-        message('Mail requested ✓ — it goes out from m.elhadad@edncm.com within about 2 minutes (the office PC sends it).');
-        (function wait(){
-          if(Date.now()-t0 > 6*60*1000){ message('Still waiting — the office PC may be off. It will send as soon as it is back on.'); done(); return; }
-          setTimeout(function(){
-            fetch(base+'run=mailstatus', {cache:'no-store', redirect:'follow'}).then(function(r){ return r.json(); })
-              .then(function(st){
-                if(st.last && st.last.at !== before){
-                  var ok = String(st.last.info).indexOf('FAILED') < 0;
-                  message((ok?'Mail sent at '+hm(st.last.at)+' ✓ ':'Mail failed: ')+esc(st.last.info), ok?'':'err'); done();
-                } else wait();
-              }).catch(wait);
-          }, 20000);
-        })();
-      })
-      .catch(function(e){ message('Could not request the mail: '+esc(e.message||e), 'err'); done(); });
-    function done(){ mailing=false; $('btnMail').classList.remove('spin'); }
+    if(!D) return;
+    var f=$('from').value||'0000', t=$('to').value||'9999', p=$('plant').value, m=$('mix').value;
+    var mats={}, mixes={}, T=0, R=0, first='', last='';
+    D.rows.forEach(function(r){
+      if(r.length < 8 || r[0]<f || r[0]>t) return;
+      if(p!=='' && String(r[1])!==p) return;
+      if(m!=='' && String(r[2])!==m) return;
+      if(!r[6] && !r[7]) return;
+      var a=mats[r[3]]||(mats[r[3]]=[0,0]); a[0]+=r[6]; a[1]+=r[7];
+      var o=mixes[r[2]]||(mixes[r[2]]=[0,0]); o[0]+=r[6]; o[1]+=r[7];
+      T+=r[6]; R+=r[7];
+      if(!first || r[0]<first) first=r[0]; if(r[0]>last) last=r[0];
+    });
+    if(!T && !R){ message('Nothing to send for this selection.'); return; }
+    var pc=function(df,th){ return th ? ' ('+(df>0?'+':'')+(df/th*100).toFixed(2)+'%)' : ''; };
+    var L=[];
+    L.push('Mix Theory vs Dry Real');
+    L.push(dm2(first)+' to '+dm2(last)+' · Plant: '+(p===''?'All':D.plants[p])+(m===''?'':' · Mix: '+D.mixes[m]));
+    L.push('');
+    L.push('TOTAL: Mix '+fmt(T)+' | Dry '+fmt(R)+' | Diff '+fmt(T-R)+pc(T-R,T));
+    L.push('');
+    L.push('By material (Mix | Dry | Diff):');
+    Object.keys(mats).filter(function(k){ return D.mats[k] && (mats[k][0]||mats[k][1]); })
+      .sort(function(a,b){ return D.mats[a].localeCompare(D.mats[b]); })
+      .forEach(function(k){ var a=mats[k], df=a[0]-a[1]; L.push('- '+D.mats[k]+': '+fmt(a[0])+' | '+fmt(a[1])+' | '+fmt(df)+pc(df,a[0])); });
+    var top=Object.keys(mixes).filter(function(k){ return D.mixes[k] && Math.round(mixes[k][0]-mixes[k][1])!==0; })
+      .sort(function(a,b){ return Math.abs(mixes[b][0]-mixes[b][1])-Math.abs(mixes[a][0]-mixes[a][1]); }).slice(0,5);
+    if(top.length){
+      L.push(''); L.push('Mixes with the biggest difference:');
+      top.forEach(function(k){ var o=mixes[k], df=o[0]-o[1]; L.push('- '+D.mixes[k]+': '+fmt(df)+pc(df,o[0])); });
+    }
+    L.push(''); L.push('Mix Theory = m3 in the plant reports x approved mix designs. ICE is in Dry only (the designs count it inside Water).');
+    var subject='NCM - Mix Theory vs Dry '+dm2(first)+' to '+dm2(last);
+    var url='mailto:'+MAIL_TO+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(L.join('\n'));
+    window.__lastMail=url;                            // kept for testing
+    location.href=url;
   });
 
   // pull new plant reports from the Drive folder now (same job as the 7 AM run)
